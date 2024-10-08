@@ -30,6 +30,30 @@ export type BindingResponse = SklandResponse<{
   }[]
 }>
 
+export type GetAttendanceResponse = SklandResponse<{
+  currentTs: string
+  calendar: {
+    resourceId: string
+    type: string
+    count: number
+    available: boolean
+    done: boolean
+  }[]
+  records: {
+    resourceId: string
+    type: string
+    count: number
+    ts: string
+  }[]
+  resourceInfoMap: {
+    [key: string]: {
+      id: string
+      name: string
+      type: string
+    }
+  }
+}>
+
 export type AttendanceResponse = SklandResponse<{
   ts: number
   awards: {
@@ -54,4 +78,6 @@ export enum SklandBoard {
   Popucom = 4,
   /** 纳斯特港 */
   Neste = 100,
+  /** 开拓芯 */
+  Coreblazer = 101,
 }
