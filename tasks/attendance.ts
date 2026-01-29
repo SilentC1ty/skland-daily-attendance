@@ -8,6 +8,14 @@ import { createClient } from 'skland-kit'
 import { createContext } from 'unctx'
 import { attendCharacter, createMessageCollector, generateAttendanceKey, getSplitByComma } from '~/utils/index'
 
+interface GameStats {
+  gameName: string
+  total: number
+  succeeded: number // 本次签到成功
+  alreadyAttended: number // 今天已签到
+  failed: number // 签到失败
+}
+
 interface ExecutionStats {
   accounts: {
     total: number
@@ -16,12 +24,7 @@ interface ExecutionStats {
     failed: number // 有失败的账号
     failedIndexes: number[]
   }
-  characters: {
-    total: number
-    succeeded: number // 本次签到成功
-    alreadyAttended: number // 今天已签到
-    failed: number // 签到失败
-  }
+  charactersByGame: Map<number, GameStats> // key: gameId
 }
 
 interface ProcessAccountResult {
@@ -46,6 +49,8 @@ const attendanceContext = createContext<AttendanceContext>({
 // Export composable function for accessing context
 const useAttendanceContext = attendanceContext.use
 
+const ATTENDANCE_AVAILABLE_APPCODE = ['arknights', 'endfield']
+
 async function processAccount(
   token: string,
   accountNumber: number,
@@ -57,46 +62,64 @@ async function processAccount(
   const hasAttended = await storage.getItem(attendanceKey)
 
   if (hasAttended) {
-    messageCollector.log(`\n--- 账号 ${accountNumber}/${totalAccounts} ---`)
-    messageCollector.log(`今天已经签到过，跳过`)
+    messageCollector.notify(`\n--- 账号 ${accountNumber}/${totalAccounts} ---`)
+    messageCollector.info(`今天已经签到过，跳过`)
     stats.accounts.skipped++
     return { accountHasError: false, charactersCount: 0 }
   }
 
-  messageCollector.log(`\n--- 账号 ${accountNumber}/${totalAccounts} ---`)
-  messageCollector.log(`开始处理...`)
+  messageCollector.notify(`\n--- 账号 ${accountNumber}/${totalAccounts} ---`)
+  messageCollector.info(`开始处理...`)
 
   const client = createClient()
   const { code } = await client.collections.hypergryph.grantAuthorizeCode(token)
   await client.signIn(code)
 
   const { list } = await client.collections.player.getBinding()
-  const characterList = list.filter(i => i.appCode === 'arknights').flatMap(i => i.bindingList)
-
-  stats.characters.total += characterList.length
+  // Build character list with game information preserved
+  const characterList = list
+    .filter(i => ATTENDANCE_AVAILABLE_APPCODE.includes(i.appCode))
+    .flatMap(i => i.bindingList)
 
   let accountHasError = false
   for (const character of characterList) {
-    const result = await attendCharacter(client, character, maxRetries)
-
-    if (result.hasError) {
-      messageCollector.error(result.message)
+    // Initialize game stats if not exists
+    if (!stats.charactersByGame.has(character.gameId)) {
+      stats.charactersByGame.set(character.gameId, {
+        gameName: character.gameName,
+        total: 0,
+        succeeded: 0,
+        alreadyAttended: 0,
+        failed: 0,
+      })
     }
-    else {
-      messageCollector.log(result.message)
-    }
 
-    // Collect character statistics
+    const gameStats = stats.charactersByGame.get(character.gameId)!
+    gameStats.total++
+
+    const result = await attendCharacter(
+      client,
+      character,
+      maxRetries,
+      character.gameName,
+      retriesLeft => messageCollector.log(`操作失败，剩余重试次数: ${retriesLeft}`),
+    )
+
+    // Collect message to notification
     if (result.hasError) {
-      stats.characters.failed++
+      messageCollector.infoError(result.message)
+      gameStats.failed++
       accountHasError = true
     }
-    else if (result.success) {
-      stats.characters.succeeded++
-    }
     else {
-      // Already attended today
-      stats.characters.alreadyAttended++
+      messageCollector.info(result.message)
+      if (result.success) {
+        gameStats.succeeded++
+      }
+      else {
+        // Already attended today
+        gameStats.alreadyAttended++
+      }
     }
   }
 
@@ -136,7 +159,7 @@ export default defineTask<'success' | 'failed'>({
 
     const storage = useStorage()
 
-    messageCollector.collect('## 明日方舟签到')
+    messageCollector.notify('## 森空岛每日签到')
 
     const maxRetries = Number(config.maxRetries)
 
@@ -149,12 +172,7 @@ export default defineTask<'success' | 'failed'>({
         failed: 0,
         failedIndexes: [],
       },
-      characters: {
-        total: 0,
-        succeeded: 0,
-        alreadyAttended: 0,
-        failed: 0,
-      },
+      charactersByGame: new Map(),
     }
 
     let hasFailed = false
@@ -183,8 +201,8 @@ export default defineTask<'success' | 'failed'>({
         catch (error) {
           const { stats, messageCollector } = useAttendanceContext()
           const errorMessage = error instanceof Error ? error.message : String(error)
-          messageCollector.log(`\n--- 账号 ${accountNumber}/${tokens.length} ---`)
-          messageCollector.collect(`处理失败: ${errorMessage}`, { output: true, isError: true })
+          messageCollector.notify(`\n--- 账号 ${accountNumber}/${tokens.length} ---`)
+          messageCollector.infoError(`处理失败: ${errorMessage}`)
           hasFailed = true
           stats.accounts.failed++
           stats.accounts.failedIndexes.push(accountNumber)
@@ -193,23 +211,28 @@ export default defineTask<'success' | 'failed'>({
     })
 
     // Output execution summary
-    messageCollector.collect(`\n========== 执行摘要 ==========`)
-    messageCollector.collect(`账号统计:`)
-    messageCollector.collect(`  • 总数: ${stats.accounts.total}`)
-    messageCollector.collect(`  • 成功: ${stats.accounts.successful}`)
-    messageCollector.collect(`  • 跳过: ${stats.accounts.skipped}`)
+    messageCollector.notify(`\n========== 执行摘要 ==========`)
+    messageCollector.notify(`账号统计:`)
+    messageCollector.notify(`  • 总数: ${stats.accounts.total}`)
+    messageCollector.notify(`  • 成功: ${stats.accounts.successful}`)
+    messageCollector.notify(`  • 跳过: ${stats.accounts.skipped}`)
     if (stats.accounts.failed > 0) {
-      messageCollector.collect(`  • 失败: ${stats.accounts.failed} (账号 #${stats.accounts.failedIndexes.join(', #')})`, { isError: true })
+      messageCollector.notifyError(`  • 失败: ${stats.accounts.failed} (账号 #${stats.accounts.failedIndexes.join(', #')})`)
     }
 
-    messageCollector.collect(`\n角色统计:`)
-    messageCollector.collect(`  • 总数: ${stats.characters.total}`)
-    messageCollector.collect(`  • 本次签到成功: ${stats.characters.succeeded}`)
-    messageCollector.collect(`  • 今天已签到: ${stats.characters.alreadyAttended}`)
-    if (stats.characters.failed > 0) {
-      messageCollector.collect(`  • 签到失败: ${stats.characters.failed}`, { isError: true })
+    // Output game-specific statistics
+    if (stats.charactersByGame.size > 0) {
+      for (const gameStats of stats.charactersByGame.values()) {
+        messageCollector.notify(`\n【${gameStats.gameName}】角色统计:`)
+        messageCollector.notify(`  • 总数: ${gameStats.total}`)
+        messageCollector.notify(`  • 本次签到成功: ${gameStats.succeeded}`)
+        messageCollector.notify(`  • 今天已签到: ${gameStats.alreadyAttended}`)
+        if (gameStats.failed > 0) {
+          messageCollector.notifyError(`  • 签到失败: ${gameStats.failed}`)
+        }
+      }
     }
-    
+
     if (stats.accounts.successful > 0 || stats.accounts.failed > 0)
       await messageCollector.push()
 
