@@ -7,22 +7,22 @@ trustPolicyExclude:
   - undici@5.29.0
 catalogs:
   build:
-    rolldown: 1.0.0-rc.2
+    rolldown: 1.0.0-rc.5
   dev:
     '@actions/core': ^3.0.0
-    '@antfu/eslint-config': ^7.2.0
-    eslint: ^9.39.2
+    '@antfu/eslint-config': ^7.7.0
+    eslint: ^10.0.3
     nitro: 3.0.1-alpha.2
     typescript: ^5.9.3
-    wait-on: ^9.0.3
-    wrangler: ^4.63.0
+    wait-on: ^9.0.4
+    wrangler: ^4.71.0
   lib:
-    '@upstash/redis': ^1.36.2
+    '@upstash/redis': ^1.36.3
     aws4fetch: ^1.0.20
-    ioredis: ^5.9.2
+    ioredis: ^5.10.0
     skland-kit: ^0.3.4
-    statocysts: ^0.10.2
+    statocysts: ^0.11.0
     unctx: ^2.5.0
-    unstorage: ^2.0.0-alpha.5
+    unstorage: ^2.0.0-alpha.6
   types:
-    '@types/node': ^25.2.1
+    '@types/node': ^25.3.5

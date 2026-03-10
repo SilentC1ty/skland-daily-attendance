@@ -8,8 +8,7 @@
   },
   "kv_namespaces": [
     {
-      "binding": "KV",
-      "id": "f67ae953026845daa1a25cef8cf8de36"
+      "binding": "KV"
     }
   ],
   "triggers": {
