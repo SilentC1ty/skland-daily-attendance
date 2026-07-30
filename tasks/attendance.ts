@@ -79,7 +79,17 @@ async function processAccount(
   // Build character list with game information preserved
   const characterList = list
     .filter(i => ATTENDANCE_AVAILABLE_APPCODE.includes(i.appCode))
-    .flatMap(i => i.bindingList)
+    .flatMap((binding) => {
+      if (binding.appCode === 'endfield') {
+        // 终末地按单个角色展开，与明日方舟不同，每个 role 需要独立签到
+        return binding.bindingList.flatMap(player =>
+          player.roles.length > 0
+            ? player.roles.map(role => ({ ...player, defaultRole: role, roles: [role] }))
+            : [player],
+        )
+      }
+      return binding.bindingList
+    })
 
   let accountHasError = false
   for (const character of characterList) {

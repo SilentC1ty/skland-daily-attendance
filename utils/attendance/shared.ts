@@ -38,13 +38,13 @@ export function formatArknightsAwards(
 
 export function formatEndfieldAwards(
   awardIds: Array<{ id: string }>,
-  resourceInfoMap: Record<string, { name: string }>,
+  resourceInfoMap: Record<string, { name: string, count?: number }>,
 ): string {
   return awardIds.map((a) => {
     const award = resourceInfoMap[a.id]
     if (!award) {
-      return `「未知奖励」1 个`
+      return `「未知奖励」1个`
     }
-    return `「${award.name}」1个`
+    return `「${award.name}」${award.count ?? 1}个`
   }).join(',')
 }

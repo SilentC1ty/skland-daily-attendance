@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { platform } from 'node:os'
 import process from 'node:process'
 import * as core from '@actions/core'
 import waitOn from 'wait-on'
@@ -9,8 +10,9 @@ const BASE_URL = `http://${HOST}:${PORT}`
 
 core.info('🚀 准备启动 Nitro 服务...')
 
-// 启动服务
-const server = spawn('pnpm', ['dev'], {
+// Windows 下 pnpm 实际是 pnpm.cmd，需要指定完整文件名
+const pnpmCmd = platform() === 'win32' ? 'pnpm.cmd' : 'pnpm'
+const server = spawn(pnpmCmd, ['dev'], {
   stdio: 'inherit',
   env: {
     ...process.env,
